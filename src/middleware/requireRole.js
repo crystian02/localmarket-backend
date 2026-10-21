@@ -1,3 +1,5 @@
+//src/middleware/requireRole.js
+
 export const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {

@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '../config/supabase.js';
-import { prisma } from '../config/prisma.js';
 
 export const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -17,19 +16,26 @@ export const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: 'Token inválido o expirado' });
     }
 
-    const profile = await prisma.profile.findUnique({
-      where: { id: user.id }
-    });
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, full_name, role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profileError || !profile) {
+      return res.status(401).json({ message: 'Perfil no encontrado' });
+    }
 
     req.user = {
       id: user.id,
       email: user.email,
-      role: profile?.role || 'buyer'
+      full_name: profile.full_name || user.email,
+      role: profile.role || 'buyer'
     };
 
-    next();
+    return next();
   } catch (error) {
-    console.error(error);
+    console.error('Auth middleware error:', error);
     return res.status(500).json({ message: 'Error validando autenticación' });
   }
 };

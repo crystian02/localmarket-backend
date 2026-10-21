@@ -1,3 +1,5 @@
+//src/services/delivery.js
+
 export function haversineKm(lat1, lon1, lat2, lon2) {
   const toRad = value => (value * Math.PI) / 180;
 
