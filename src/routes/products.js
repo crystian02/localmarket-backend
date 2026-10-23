@@ -1,9 +1,19 @@
+// src/routes/products.js
+// Este archivo controla todo lo relacionado con los productos de una tienda.
+// Permite listar los productos de una tienda,
+// crear nuevos productos,
+// y actualizar datos como precio, stock, imagen, marca o disponibilidad.
+
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 
 const router = express.Router();
+
+// GET /api/shops/:shopId/products
+// Devuelve todos los productos asociados a una tienda.
+// Se usa para mostrar el catalogo en la app.
 
 router.get('/shops/:shopId/products', authMiddleware, async (req, res) => {
   try {
@@ -26,6 +36,10 @@ router.get('/shops/:shopId/products', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/shops/:shopId/products
+// Crea un producto dentro de una tienda.
+// Solo pueden hacerlo el dueño o un admin de la tienda.
+
 router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin', 'shop_admin'), async (req, res) => {
   try {
     const { shopId } = req.params;
@@ -39,10 +53,12 @@ router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin',
       image_url
     } = req.body;
 
+    // Validaciones mínimas
     if (!name || price_cents === undefined || stock === undefined) {
       return res.status(400).json({ message: 'name, price_cents y stock son requeridos' });
     }
 
+    // Verificamos que la tienda exista
     const { data: shop, error: shopError } = await supabaseAdmin
       .from('shops')
       .select('id, owner_id')
@@ -57,6 +73,7 @@ router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin',
       return res.status(404).json({ message: 'Tienda no encontrada' });
     }
 
+    // Validamos permisos
     const isOwner = shop.owner_id === req.user.id;
     const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
 
@@ -64,6 +81,7 @@ router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin',
       return res.status(403).json({ message: 'No tienes permisos para agregar productos a esta tienda' });
     }
 
+    // Validaciones de negocio
     if (Number(price_cents) < 0) {
       return res.status(400).json({ message: 'price_cents no puede ser negativo' });
     }
@@ -72,6 +90,7 @@ router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin',
       return res.status(400).json({ message: 'stock no puede ser negativo' });
     }
 
+    // Insertamos el producto
     const { data, error } = await supabaseAdmin
       .from('products')
       .insert([
@@ -102,6 +121,10 @@ router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin',
   }
 });
 
+// PATCH /api/shops/:shopId/products/:productId
+// Actualiza un producto existente.
+// Se puede cambiar nombre, precio, stock, imagen, marca, tags y disponibilidad.
+
 router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, res) => {
   try {
     const { shopId, productId } = req.params;
@@ -116,6 +139,7 @@ router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, r
       is_available
     } = req.body;
 
+    // Verificamos que el producto exista y pertenezca a la tienda
     const { data: product, error: productError } = await supabaseAdmin
       .from('products')
       .select('*')
@@ -131,6 +155,7 @@ router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, r
       return res.status(404).json({ message: 'Producto no encontrado' });
     }
 
+    // Verificamos que la tienda exista
     const { data: shop, error: shopError } = await supabaseAdmin
       .from('shops')
       .select('owner_id')
@@ -141,6 +166,7 @@ router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, r
       return res.status(400).json({ message: shopError.message });
     }
 
+    // Validamos permisos del usuario
     const isOwner = shop && shop.owner_id === req.user.id;
     const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
 
@@ -148,6 +174,7 @@ router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, r
       return res.status(403).json({ message: 'No tienes permisos para editar este producto' });
     }
 
+    // Construimos un objeto dinámico con los campos que vienen en el body
     const updatePayload = {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),
@@ -159,6 +186,7 @@ router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, r
       ...(is_available !== undefined && { is_available })
     };
 
+    // Actualizamos el producto
     const { data, error } = await supabaseAdmin
       .from('products')
       .update(updatePayload)

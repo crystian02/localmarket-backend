@@ -1,3 +1,5 @@
+// get-token.js
+
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 
@@ -11,7 +13,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const email = 'superadmin@gmail.com';
-const password = '123456';
+const password = 'superadmin';
 
 const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
   email,
