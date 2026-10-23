@@ -36,5 +36,5 @@ if (error) {
   process.exit(1);
 }
 
-console.log('TOKEN:');
+console.log('bearer');
 console.log(data.session.access_token);

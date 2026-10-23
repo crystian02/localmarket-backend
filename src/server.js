@@ -1,5 +1,3 @@
-// src/server.js
-
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -10,6 +8,11 @@ import shopsRoutes from './routes/shops.js';
 import productsRoutes from './routes/products.js';
 import ordersRoutes from './routes/orders.js';
 import changeRequestsRoutes from './routes/change-requests.js';
+import paymentsRoutes from './routes/payments.js';
+import deliveryRoutes from './routes/delivery.js';
+import notificationsRoutes from './routes/notifications.js';
+import supportRoutes from './routes/support.js';
+import adsRoutes from './routes/ads.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -34,6 +37,11 @@ app.use('/api', shopsRoutes);
 app.use('/api', productsRoutes);
 app.use('/api', ordersRoutes);
 app.use('/api', changeRequestsRoutes);
+app.use('/api', paymentsRoutes);
+app.use('/api', deliveryRoutes);
+app.use('/api', notificationsRoutes);
+app.use('/api', supportRoutes);
+app.use('/api', adsRoutes);
 
 app.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
