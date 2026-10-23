@@ -1,4 +1,5 @@
 //src/routes/change-request.js
+// Rutas para manejar solicitudes de cambio en la base de datos, como productos, tiendas y pasillos
 
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
@@ -7,100 +8,157 @@ import { requireRole } from '../middleware/requireRole.js';
 
 const router = express.Router();
 
-router.post('/shops/:shopId/change-requests', authMiddleware, requireRole('shop_admin', 'superadmin'), async (req, res) => {
-  const { entity, entity_id, updates } = req.body;
+router.get('/change-requests', authMiddleware, async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('change_requests')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-  if (!entity || !entity_id || !updates) {
-    return res.status(400).json({ message: 'Faltan entity, entity_id o updates' });
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.json(data);
+  } catch (error) {
+    console.error('GET /change-requests error:', error);
+    return res.status(500).json({ message: 'Error obteniendo solicitudes' });
   }
+});
 
-  const { data, error } = await supabaseAdmin
-    .from('shop_change_requests')
-    .insert([
-      {
-        shop_id: req.params.shopId,
-        requested_by: req.user.id,
-        requested_changes: {
-          entity,
-          entity_id,
-          updates
-        },
-        status: 'pending'
+router.post('/shops/:shopId/change-requests', authMiddleware, requireRole('superadmin', 'shop_admin'), async (req, res) => {
+  try {
+    const { shopId } = req.params;
+    const { requested_changes, review_notes } = req.body;
+
+    if (!requested_changes || typeof requested_changes !== 'object') {
+      return res.status(400).json({ message: 'requested_changes es requerido' });
+    }
+
+    const { data: shop, error: shopError } = await supabaseAdmin
+      .from('shops')
+      .select('id, owner_id')
+      .eq('id', shopId)
+      .maybeSingle();
+
+    if (shopError) {
+      return res.status(400).json({ message: shopError.message });
+    }
+
+    if (!shop) {
+      return res.status(404).json({ message: 'Tienda no encontrada' });
+    }
+
+    const isOwner = shop.owner_id === req.user.id;
+    const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: 'No tienes permisos para crear esta solicitud' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('change_requests')
+      .insert([
+        {
+          shop_id: shopId,
+          requested_by: req.user.id,
+          requested_changes: requested_changes,
+          review_notes: review_notes || null,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        }
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.status(201).json({ change_request: data });
+  } catch (error) {
+    console.error('POST /shops/:shopId/change-requests error:', error);
+    return res.status(500).json({ message: 'Error creando solicitud de cambio' });
+  }
+});
+
+router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole('superadmin', 'shop_admin'), async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    const { data: request, error: requestError } = await supabaseAdmin
+      .from('change_requests')
+      .select('*')
+      .eq('id', requestId)
+      .maybeSingle();
+
+    if (requestError) {
+      return res.status(400).json({ message: requestError.message });
+    }
+
+    if (!request) {
+      return res.status(404).json({ message: 'Solicitud no encontrada' });
+    }
+
+    if (request.status === 'approved') {
+      return res.status(400).json({ message: 'La solicitud ya fue aprobada' });
+    }
+
+    const changes = request.requested_changes || {};
+
+    const { data: shop, error: shopCheckError } = await supabaseAdmin
+      .from('shops')
+      .select('*')
+      .eq('id', request.shop_id)
+      .maybeSingle();
+
+    if (shopCheckError) {
+      return res.status(400).json({ message: shopCheckError.message });
+    }
+
+    if (!shop) {
+      return res.status(404).json({ message: 'Tienda asociada no encontrada' });
+    }
+
+    const updatePayload = {};
+
+    Object.entries(changes).forEach(([key, value]) => {
+      if (value !== undefined) {
+        updatePayload[key] = value;
       }
-    ])
-    .select()
-    .single();
+    });
 
-  if (error) {
-    return res.status(400).json({ message: error.message });
+    if (Object.keys(updatePayload).length > 0) {
+      const { error: updateError } = await supabaseAdmin
+        .from('shops')
+        .update(updatePayload)
+        .eq('id', request.shop_id);
+
+      if (updateError) {
+        return res.status(400).json({ message: updateError.message });
+      }
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('change_requests')
+      .update({
+        status: 'approved',
+        reviewed_by: req.user.id,
+        reviewed_at: new Date().toISOString()
+      })
+      .eq('id', requestId)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    return res.json({ change_request: data });
+  } catch (error) {
+    console.error('PATCH /change-requests/:requestId/approve error:', error);
+    return res.status(500).json({ message: 'Error aprobando solicitud' });
   }
-
-  return res.status(201).json(data);
-});
-
-router.get('/change-requests', authMiddleware, requireRole('superadmin'), async (req, res) => {
-  const { data, error } = await supabaseAdmin
-    .from('shop_change_requests')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    return res.status(500).json({ message: error.message });
-  }
-
-  res.json(data);
-});
-
-router.patch('/change-requests/:id/approve', authMiddleware, requireRole('superadmin'), async (req, res) => {
-  const { data: request, error: reqError } = await supabaseAdmin
-    .from('shop_change_requests')
-    .select('*')
-    .eq('id', req.params.id)
-    .single();
-
-  if (reqError || !request) {
-    return res.status(404).json({ message: 'Solicitud no encontrada' });
-  }
-
-  const { entity, entity_id, updates } = request.requested_changes;
-
-  const tableMap = {
-    products: 'products',
-    shops: 'shops',
-    aisles: 'aisles'
-  };
-
-  const tableName = tableMap[entity];
-
-  if (!tableName) {
-    return res.status(400).json({ message: 'Entidad no soportada' });
-  }
-
-  const { error: updateError } = await supabaseAdmin
-    .from(tableName)
-    .update(updates)
-    .eq('id', entity_id);
-
-  if (updateError) {
-    return res.status(400).json({ message: updateError.message });
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('shop_change_requests')
-    .update({
-      status: 'approved',
-      reviewed_by: req.user.id,
-      reviewed_at: new Date().toISOString()
-    })
-    .eq('id', req.params.id)
-    .select()
-    .single();
-
-  if (error) {
-    return res.status(400).json({ message: error.message });
-  }
-
-  res.json(data);
 });
 
 export default router;

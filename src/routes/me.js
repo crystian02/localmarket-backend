@@ -1,4 +1,5 @@
 //src/routes/me.js
+// Rutas para manejar la información del usuario autenticado
 
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';

@@ -1,4 +1,5 @@
 //src/middleware/requireRole.js
+// Middleware para verificar el rol del usuario
 
 export const requireRole = (...roles) => {
   return (req, res, next) => {

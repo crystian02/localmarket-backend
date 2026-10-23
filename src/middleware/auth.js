@@ -1,3 +1,6 @@
+// src/middleware/auth.js
+// Middleware de autenticación para verificar el token JWT y obtener la información del usuario desde Supabase
+
 import { supabaseAdmin } from '../config/supabase.js';
 
 export const authMiddleware = async (req, res, next) => {
