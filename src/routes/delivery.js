@@ -1,21 +1,16 @@
 //src/routes/delivery.js
-
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validateDelivery, createDeliveryToken } from '../services/deliveryService.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
 const router = express.Router();
 
-// Rutas relacionadas con la entrega / validación del pedido
-
-
 // POST /api/delivery/validate
 // Valida que un conductor haya llegado al destino del pedido.
-// Se usa para registrar la comprobación de la entrega.
 router.post('/delivery/validate', authMiddleware, async (req, res) => {
   try {
-    // Leemos los datos que vienen en el body
     const {
       order_id,
       driver_id,
@@ -25,26 +20,29 @@ router.post('/delivery/validate', authMiddleware, async (req, res) => {
       fail_reason
     } = req.body;
 
-    // Validamos que los campos mínimos lleguen
-    // Sin order_id, driver_id o scan_location no podemos validar la entrega
     if (!order_id || !driver_id || !scan_location) {
-      return res.status(400).json({ message: 'order_id, driver_id y scan_location son requeridos' });
+      return errorResponse(
+        res,
+        'order_id, driver_id y scan_location son requeridos',
+        'DELIVERY_INVALID_INPUT',
+        400
+      );
     }
 
-    // Verificamos que el pedido realmente exista
     const { data: order, error: orderError } = await supabaseAdmin
       .from('orders')
       .select('*')
       .eq('id', order_id)
       .maybeSingle();
 
-    // Si falla la consulta, devolvemos el error
-    if (orderError) return res.status(400).json({ message: orderError.message });
+    if (orderError) {
+      return errorResponse(res, orderError.message, 'ORDER_QUERY_ERROR', 400);
+    }
 
-    // Si no existe ese pedido, respondemos 404
-    if (!order) return res.status(404).json({ message: 'Pedido no encontrado' });
+    if (!order) {
+      return errorResponse(res, 'Pedido no encontrado', 'ORDER_NOT_FOUND', 404);
+    }
 
-    // Guardamos la validación usando la función del servicio
     const validation = await validateDelivery({
       orderId: order_id,
       driverId: driver_id,
@@ -54,47 +52,53 @@ router.post('/delivery/validate', authMiddleware, async (req, res) => {
       failReason: fail_reason || null
     });
 
-    // Devolvemos la validación creada
-    return res.status(201).json({ validation });
+    return successResponse(res, { validation }, 201);
   } catch (error) {
-    // Si ocurre algo inesperado, devolvemos error 500
     console.error('POST /delivery/validate error:', error);
-    return res.status(500).json({ message: 'Error validando entrega' });
+    return errorResponse(
+      res,
+      'Error validando entrega',
+      'DELIVERY_VALIDATION_FAILED',
+      500
+    );
   }
 });
 
 // POST /api/delivery/token
 // Genera un token QR o secreto asociado al pedido para la entrega.
-// Esto permite que el conductor pueda validar la entrega.
 router.post('/delivery/token', authMiddleware, async (req, res) => {
   try {
-    // Debemos recibir el order_id para asociar el token
     const { order_id } = req.body;
 
     if (!order_id) {
-      return res.status(400).json({ message: 'order_id es requerido' });
+      return errorResponse(
+        res,
+        'order_id es requerido',
+        'DELIVERY_TOKEN_INVALID_INPUT',
+        400
+      );
     }
 
-    // Creamos el token usando el servicio
     const token = await createDeliveryToken({ orderId: order_id });
 
-    // Respuesta exitosa
-    return res.status(201).json({ token });
+    return successResponse(res, { token }, 201);
   } catch (error) {
     console.error('POST /delivery/token error:', error);
-    return res.status(500).json({ message: 'Error creando token de entrega' });
+    return errorResponse(
+      res,
+      'Error creando token de entrega',
+      'DELIVERY_TOKEN_FAILED',
+      500
+    );
   }
 });
 
 // GET /api/delivery/:orderId/last-validation
 // Consulta la última validación de entrega de un pedido.
-// Sirve para ver si la entrega fue exitosa o no.
 router.get('/delivery/:orderId/last-validation', authMiddleware, async (req, res) => {
   try {
-    // Obtenemos el orderId desde la URL
     const { orderId } = req.params;
 
-    // Buscamos la última validación asociada a ese pedido
     const { data, error } = await supabaseAdmin
       .from('delivery_validations')
       .select('*')
@@ -103,14 +107,19 @@ router.get('/delivery/:orderId/last-validation', authMiddleware, async (req, res
       .limit(1)
       .maybeSingle();
 
-    // Si falla la consulta
-    if (error) return res.status(400).json({ message: error.message });
+    if (error) {
+      return errorResponse(res, error.message, 'DELIVERY_VALIDATION_QUERY_ERROR', 400);
+    }
 
-    // Respondemos con la validación más reciente
-    return res.json({ validation: data });
+    return successResponse(res, { validation: data }, 200);
   } catch (error) {
     console.error('GET /delivery/:orderId/last-validation error:', error);
-    return res.status(500).json({ message: 'Error consultando validación' });
+    return errorResponse(
+      res,
+      'Error consultando validación',
+      'DELIVERY_VALIDATION_FETCH_FAILED',
+      500
+    );
   }
 });
 

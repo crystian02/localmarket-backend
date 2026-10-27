@@ -3,38 +3,34 @@
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { createNotification, getNotificationsForUser } from '../services/notificationService.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
 const router = express.Router();
 
-
-// Rutas para consultar y crear notificaciones del sistema
-
-
 // GET /api/notifications
 // Devuelve todas las notificaciones visibles para el usuario autenticado.
-// Se usa para mostrar el centro de notificaciones del usuario.
 router.get('/notifications', authMiddleware, async (req, res) => {
   try {
-    // Llamamos al servicio para obtener las notificaciones del rol del usuario
     const notifications = await getNotificationsForUser({
       role: req.user.role
     });
 
-    // Devolvemos la lista de notificaciones
-    return res.json({ notifications });
+    return successResponse(res, { notifications }, 200);
   } catch (error) {
-    // Error inesperado
     console.error('GET /notifications error:', error);
-    return res.status(500).json({ message: 'Error obteniendo notificaciones' });
+    return errorResponse(
+      res,
+      'Error obteniendo notificaciones',
+      'NOTIFICATIONS_FETCH_FAILED',
+      500
+    );
   }
 });
 
 // POST /api/notifications
 // Crea una nueva notificación para un rol específico o para todos.
-// Se usa cuando se quiere avisar algo importante: nuevo pedido, cambios, promociones, etc.
 router.post('/notifications', authMiddleware, async (req, res) => {
   try {
-    // Leemos los datos recibidos del cliente
     const {
       title,
       body,
@@ -45,12 +41,15 @@ router.post('/notifications', authMiddleware, async (req, res) => {
       image_url
     } = req.body;
 
-    // Validamos que los campos mínimos vengan
     if (!title || !body) {
-      return res.status(400).json({ message: 'title y body son requeridos' });
+      return errorResponse(
+        res,
+        'title y body son requeridos',
+        'NOTIFICATION_INVALID_INPUT',
+        400
+      );
     }
 
-    // Creamos la notificación usando el servicio
     const notification = await createNotification({
       title,
       body,
@@ -62,12 +61,15 @@ router.post('/notifications', authMiddleware, async (req, res) => {
       imageUrl: image_url || null
     });
 
-    // Respuesta exitosa
-    return res.status(201).json({ notification });
+    return successResponse(res, { notification }, 201);
   } catch (error) {
-    // Error general
     console.error('POST /notifications error:', error);
-    return res.status(500).json({ message: 'Error creando notificación' });
+    return errorResponse(
+      res,
+      'Error creando notificación',
+      'NOTIFICATION_CREATE_FAILED',
+      500
+    );
   }
 });
 

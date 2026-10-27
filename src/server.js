@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import http from 'http';
 
 import meRoutes from './routes/me.js';
 import shopsRoutes from './routes/shops.js';
@@ -13,6 +14,9 @@ import deliveryRoutes from './routes/delivery.js';
 import notificationsRoutes from './routes/notifications.js';
 import supportRoutes from './routes/support.js';
 import adsRoutes from './routes/ads.js';
+
+import errorHandler from './middleware/errorHandler.js';
+import { setupSocketServer, getSocketServer } from './socket/index.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
@@ -43,6 +47,13 @@ app.use('/api', notificationsRoutes);
 app.use('/api', supportRoutes);
 app.use('/api', adsRoutes);
 
-app.listen(PORT, () => {
+app.use(errorHandler);
+
+const server = http.createServer(app);
+setupSocketServer(server);
+
+server.listen(PORT, () => {
   console.log(`Servidor escuchando en http://localhost:${PORT}`);
 });
+
+export { app, getSocketServer };

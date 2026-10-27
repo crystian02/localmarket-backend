@@ -1,4 +1,5 @@
-// src/routes/change-requests.js
+//src/routes/change-requests.js
+
 // Rutas para gestionar solicitudes de cambio sobre tiendas.
 // Por ejemplo: cambiar la categoría, activar/desactivar una tienda,
 // o pedir ajustes a partir de un cambio solicitado por un administrador.
@@ -7,46 +8,51 @@ import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
 const router = express.Router();
 
 // GET /api/change-requests
 // Devuelve todas las solicitudes de cambio registradas.
-// Se usa para revisar pendientes, aprobadas o rechazadas.
 router.get('/change-requests', authMiddleware, async (req, res) => {
   try {
-    // Consulta todas las solicitudes de cambio de la tabla "shop_change_requests"
     const { data, error } = await supabaseAdmin
       .from('shop_change_requests')
       .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {
-      return res.status(400).json({ message: error.message });
+      return errorResponse(res, error.message, 'CHANGE_REQUESTS_FETCH_ERROR', 400);
     }
 
-    return res.json(data);
+    return successResponse(res, data, 200);
   } catch (error) {
     console.error('GET /change-requests error:', error);
-    return res.status(500).json({ message: 'Error obteniendo solicitudes' });
+    return errorResponse(
+      res,
+      'Error obteniendo solicitudes',
+      'CHANGE_REQUESTS_FETCH_FAILED',
+      500
+    );
   }
 });
 
 // POST /api/shops/:shopId/change-requests
 // Crea una solicitud para modificar una tienda.
-// Ejemplo: cambiar category, description, is_active, etc.
-
 router.post('/shops/:shopId/change-requests', authMiddleware, requireRole('superadmin', 'shop_admin'), async (req, res) => {
   try {
     const { shopId } = req.params;
     const { requested_changes, review_notes } = req.body;
 
-    // Debe venir un objeto con los cambios solicitados
     if (!requested_changes || typeof requested_changes !== 'object') {
-      return res.status(400).json({ message: 'requested_changes es requerido' });
+      return errorResponse(
+        res,
+        'requested_changes es requerido',
+        'CHANGE_REQUEST_INVALID_INPUT',
+        400
+      );
     }
 
-    // Validamos que la tienda exista
     const { data: shop, error: shopError } = await supabaseAdmin
       .from('shops')
       .select('id, owner_id')
@@ -54,22 +60,25 @@ router.post('/shops/:shopId/change-requests', authMiddleware, requireRole('super
       .maybeSingle();
 
     if (shopError) {
-      return res.status(400).json({ message: shopError.message });
+      return errorResponse(res, shopError.message, 'SHOP_QUERY_ERROR', 400);
     }
 
     if (!shop) {
-      return res.status(404).json({ message: 'Tienda no encontrada' });
+      return errorResponse(res, 'Tienda no encontrada', 'SHOP_NOT_FOUND', 404);
     }
 
-    // un admin puede crear la solicitud
     const isOwner = shop.owner_id === req.user.id;
     const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
 
     if (!isOwner && !isAdmin) {
-      return res.status(403).json({ message: 'No tienes permisos para crear esta solicitud' });
+      return errorResponse(
+        res,
+        'No tienes permisos para crear esta solicitud',
+        'CHANGE_REQUEST_FORBIDDEN',
+        403
+      );
     }
 
-    // Insertamos la solicitud en la tabla correcta
     const { data, error } = await supabaseAdmin
       .from('shop_change_requests')
       .insert([
@@ -86,24 +95,27 @@ router.post('/shops/:shopId/change-requests', authMiddleware, requireRole('super
       .single();
 
     if (error) {
-      return res.status(400).json({ message: error.message });
+      return errorResponse(res, error.message, 'CHANGE_REQUEST_CREATE_ERROR', 400);
     }
 
-    return res.status(201).json({ change_request: data });
+    return successResponse(res, { change_request: data }, 201);
   } catch (error) {
     console.error('POST /shops/:shopId/change-requests error:', error);
-    return res.status(500).json({ message: 'Error creando solicitud de cambio' });
+    return errorResponse(
+      res,
+      'Error creando solicitud de cambio',
+      'CHANGE_REQUEST_CREATE_FAILED',
+      500
+    );
   }
 });
 
 // PATCH /api/change-requests/:requestId/approve
 // Aprueba una solicitud pendiente y aplica los cambios a la tienda.
-
 router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole('superadmin', 'shop_admin'), async (req, res) => {
   try {
     const { requestId } = req.params;
 
-    // Buscamos la solicitud por su id
     const { data: request, error: requestError } = await supabaseAdmin
       .from('shop_change_requests')
       .select('*')
@@ -111,19 +123,22 @@ router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole(
       .maybeSingle();
 
     if (requestError) {
-      return res.status(400).json({ message: requestError.message });
+      return errorResponse(res, requestError.message, 'CHANGE_REQUEST_QUERY_ERROR', 400);
     }
 
     if (!request) {
-      return res.status(404).json({ message: 'Solicitud no encontrada' });
+      return errorResponse(res, 'Solicitud no encontrada', 'CHANGE_REQUEST_NOT_FOUND', 404);
     }
 
-    // Si ya está aprobada, no la volvemos a aprobar
     if (request.status === 'approved') {
-      return res.status(400).json({ message: 'La solicitud ya fue aprobada' });
+      return errorResponse(
+        res,
+        'La solicitud ya fue aprobada',
+        'CHANGE_REQUEST_ALREADY_APPROVED',
+        400
+      );
     }
 
-    // Leemos la tienda que va a ser actualizada
     const changes = request.requested_changes || {};
 
     const { data: shop, error: shopCheckError } = await supabaseAdmin
@@ -133,14 +148,13 @@ router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole(
       .maybeSingle();
 
     if (shopCheckError) {
-      return res.status(400).json({ message: shopCheckError.message });
+      return errorResponse(res, shopCheckError.message, 'SHOP_QUERY_ERROR', 400);
     }
 
     if (!shop) {
-      return res.status(404).json({ message: 'Tienda asociada no encontrada' });
+      return errorResponse(res, 'Tienda asociada no encontrada', 'SHOP_NOT_FOUND', 404);
     }
 
-    // Construimos un payload con solo los valores que se van a cambiar
     const updatePayload = {};
 
     Object.entries(changes).forEach(([key, value]) => {
@@ -149,7 +163,6 @@ router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole(
       }
     });
 
-    // Si hay cambios, los aplicamos a la tienda
     if (Object.keys(updatePayload).length > 0) {
       const { error: updateError } = await supabaseAdmin
         .from('shops')
@@ -157,11 +170,10 @@ router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole(
         .eq('id', request.shop_id);
 
       if (updateError) {
-        return res.status(400).json({ message: updateError.message });
+        return errorResponse(res, updateError.message, 'SHOP_UPDATE_ERROR', 400);
       }
     }
 
-    // Marcamos la solicitud como aprobada
     const { data, error } = await supabaseAdmin
       .from('shop_change_requests')
       .update({
@@ -174,13 +186,18 @@ router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole(
       .single();
 
     if (error) {
-      return res.status(400).json({ message: error.message });
+      return errorResponse(res, error.message, 'CHANGE_REQUEST_APPROVE_ERROR', 400);
     }
 
-    return res.json({ change_request: data });
+    return successResponse(res, { change_request: data }, 200);
   } catch (error) {
     console.error('PATCH /change-requests/:requestId/approve error:', error);
-    return res.status(500).json({ message: 'Error aprobando solicitud' });
+    return errorResponse(
+      res,
+      'Error aprobando solicitud',
+      'CHANGE_REQUEST_APPROVE_FAILED',
+      500
+    );
   }
 });
 

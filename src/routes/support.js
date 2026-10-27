@@ -3,30 +3,28 @@
 import express from 'express';
 import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
 const router = express.Router();
-
-// Rutas para soporte / tickets del usuario
 
 // GET /api/support-tickets
 // Lista los tickets del usuario autenticado
 router.get('/support-tickets', authMiddleware, async (req, res) => {
   try {
-    // Buscamos los tickets creados por este usuario
     const { data, error } = await supabaseAdmin
       .from('support_tickets')
       .select('*')
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false });
 
-    // Si hubo un error
-    if (error) return res.status(400).json({ message: error.message });
+    if (error) {
+      return errorResponse(res, error.message, 'SUPPORT_TICKETS_QUERY_ERROR', 400);
+    }
 
-    // Devolvemos la lista
-    return res.json({ tickets: data });
+    return successResponse(res, { tickets: data }, 200);
   } catch (error) {
     console.error('GET /support-tickets error:', error);
-    return res.status(500).json({ message: 'Error consultando tickets' });
+    return errorResponse(res, 'Error consultando tickets', 'SUPPORT_TICKETS_FETCH_FAILED', 500);
   }
 });
 
@@ -34,23 +32,23 @@ router.get('/support-tickets', authMiddleware, async (req, res) => {
 // Crea un ticket de soporte para reportar un problema o sugerencia
 router.post('/support-tickets', authMiddleware, async (req, res) => {
   try {
-    // Extraemos los datos del body
     const { shop_id, type, subject, message } = req.body;
 
-    // Validamos que los campos mínimos vengan
     if (!type || !subject || !message) {
-      return res.status(400).json({ message: 'type, subject y message son requeridos' });
+      return errorResponse(
+        res,
+        'type, subject y message son requeridos',
+        'SUPPORT_TICKET_INVALID_INPUT',
+        400
+      );
     }
 
-    // Tipos permitidos
     const allowed = ['reclamo', 'sugerencia', 'bug', 'otro'];
 
-    // Validamos que type sea uno de los permitidos
     if (!allowed.includes(type)) {
-      return res.status(400).json({ message: 'Tipo inválido' });
+      return errorResponse(res, 'Tipo inválido', 'SUPPORT_TICKET_INVALID_TYPE', 400);
     }
 
-    // Insertamos el ticket en la base de datos
     const { data, error } = await supabaseAdmin
       .from('support_tickets')
       .insert([
@@ -66,14 +64,14 @@ router.post('/support-tickets', authMiddleware, async (req, res) => {
       .select()
       .single();
 
-    // Si hubo un error en la inserción
-    if (error) return res.status(400).json({ message: error.message });
+    if (error) {
+      return errorResponse(res, error.message, 'SUPPORT_TICKET_CREATE_ERROR', 400);
+    }
 
-    // Si se creó correctamente
-    return res.status(201).json({ ticket: data });
+    return successResponse(res, { ticket: data }, 201);
   } catch (error) {
     console.error('POST /support-tickets error:', error);
-    return res.status(500).json({ message: 'Error creando ticket' });
+    return errorResponse(res, 'Error creando ticket', 'SUPPORT_TICKET_CREATE_FAILED', 500);
   }
 });
 
