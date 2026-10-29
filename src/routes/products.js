@@ -76,9 +76,25 @@ router.post('/shops/:shopId/products', authMiddleware, requireRole('superadmin',
     }
 
     const isOwner = shop.owner_id === req.user.id;
-    const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
+    
+    // CORRECCIÓN DE SEGURIDAD:
+    // Antes se usaba: const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
+    // Eso permitía que cualquier shop_admin editara cualquier tienda.
+    // Ahora verificamos si el shop_admin está asignado a ESTA tienda específica.
+    let isAssignedAdmin = false;
+    if (req.user.role === 'shop_admin') {
+      const { data: assignment } = await supabaseAdmin
+        .from('shop_admins')
+        .select('user_id')
+        .eq('shop_id', shopId)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      isAssignedAdmin = Boolean(assignment);
+    }
+    
+    const isSuperAdmin = req.user.role === 'superadmin';
 
-    if (!isOwner && !isAdmin) {
+    if (!isOwner && !isAssignedAdmin && !isSuperAdmin) {
       return errorResponse(
         res,
         'No tienes permisos para agregar productos a esta tienda',
@@ -168,9 +184,23 @@ router.patch('/shops/:shopId/products/:productId', authMiddleware, async (req, r
     }
 
     const isOwner = shop && shop.owner_id === req.user.id;
-    const isAdmin = ['superadmin', 'shop_admin'].includes(req.user.role);
 
-    if (!isOwner && !isAdmin) {
+    // CORRECCIÓN DE SEGURIDAD:
+    // Misma validación estricta para la edición de productos.
+    let isAssignedAdmin = false;
+    if (req.user.role === 'shop_admin') {
+      const { data: assignment } = await supabaseAdmin
+        .from('shop_admins')
+        .select('user_id')
+        .eq('shop_id', shopId)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+      isAssignedAdmin = Boolean(assignment);
+    }
+    
+    const isSuperAdmin = req.user.role === 'superadmin';
+
+    if (!isOwner && !isAssignedAdmin && !isSuperAdmin) {
       return errorResponse(
         res,
         'No tienes permisos para editar este producto',

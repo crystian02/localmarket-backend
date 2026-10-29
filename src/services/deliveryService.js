@@ -1,6 +1,7 @@
 //src/services/deliveryService.js
 
 import { supabaseAdmin } from '../config/supabase.js';
+import crypto from 'crypto'; // IMPORTACIÓN NECESARIA para generar tokens seguros
 
 // Servicio para registrar validaciones de entrega y tokens QR
 
@@ -46,8 +47,8 @@ export const validateDelivery = async ({
 // Se genera para validar la entrega del pedido.
 export const createDeliveryToken = async ({ orderId }) => {
   try {
-    // Generamos un valor único para el QR/token
-    const qrSecret = `qr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    // CORRECCIÓN DE SEGURIDAD: Usamos crypto para que el token sea imposible de adivinar.
+    const qrSecret = crypto.randomBytes(32).toString('hex');
 
     // Insertamos en la tabla delivery_tokens
     const { data, error } = await supabaseAdmin

@@ -2,6 +2,7 @@
 
 import express from 'express';
 import { authMiddleware } from '../middleware/auth.js';
+import { requireRole } from '../middleware/requireRole.js'; // Importación añadida
 import { createNotification, getNotificationsForUser } from '../services/notificationService.js';
 import { successResponse, errorResponse } from '../utils/apiResponse.js';
 
@@ -29,7 +30,8 @@ router.get('/notifications', authMiddleware, async (req, res) => {
 
 // POST /api/notifications
 // Crea una nueva notificación para un rol específico o para todos.
-router.post('/notifications', authMiddleware, async (req, res) => {
+// CORRECCIÓN DE SEGURIDAD: Solo superadmins y shop_admins pueden enviar notificaciones.
+router.post('/notifications', authMiddleware, requireRole('superadmin', 'shop_admin'), async (req, res) => {
   try {
     const {
       title,

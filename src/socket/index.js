@@ -1,8 +1,10 @@
-const { Server } = require('socket.io');
+// src/socket/index.js
+import { Server } from 'socket.io';
+import { supabaseAdmin } from '../config/supabase.js'; // Asegúrate de que esta ruta sea correcta
 
 let ioInstance = null;
 
-function setupSocketServer(server) {
+export function setupSocketServer(server) {
   const io = new Server(server, {
     cors: {
       origin: process.env.CORS_ORIGIN || '*',
@@ -12,43 +14,54 @@ function setupSocketServer(server) {
 
   ioInstance = io;
 
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
+  // Middleware de autenticación REAL
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) return next(new Error('Token requerido'));
 
-    if (!token) {
-      return next(new Error('Token requerido'));
+      // Validamos el token con Supabase (o tu sistema de auth)
+      const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+      
+      if (error || !user) {
+        return next(new Error('Token inválido o expirado'));
+      }
+
+      // Guardamos el usuario en el contexto del socket
+      socket.user = user; 
+      return next();
+    } catch (err) {
+      return next(new Error('Error de autenticación'));
     }
-
-    return next();
   });
 
   io.on('connection', (socket) => {
-    console.log('Socket conectado:', socket.id);
+    console.log(`Socket conectado: ${socket.id} | Usuario: ${socket.user.id}`);
 
     socket.on('driver:join_order', (orderId) => {
       if (!orderId) return;
+      // Nota: En un sistema ideal, aquí deberías verificar en BD si el usuario
+      // es el cliente, el driver o el dueño de la tienda de este pedido.
       socket.join(`order_${orderId}`);
       socket.emit('driver:joined_order', { orderId });
     });
 
     socket.on('driver:update_location', (payload) => {
       try {
-        const { orderId, lat, lng, driverId } = payload;
+        const { orderId, lat, lng } = payload || {};
 
-        if (!orderId || lat === undefined || lng === undefined) {
-          return;
-        }
+        if (!orderId || lat === undefined || lng === undefined) return;
 
         const eventData = {
           orderId,
-          driverId: driverId || socket.id,
+          driverId: socket.user.id, // Ya no confiamos en el payload, usamos el ID del token
           lat,
           lng,
           updatedAt: new Date().toISOString()
         };
 
+        // Solo enviamos a la sala de este pedido (eliminamos el io.emit global)
         io.to(`order_${orderId}`).emit('delivery:position_update', eventData);
-        io.emit(`order:${orderId}:location`, eventData);
       } catch (error) {
         console.error('driver:update_location error:', error);
       }
@@ -56,8 +69,7 @@ function setupSocketServer(server) {
 
     socket.on('driver:update_status', (payload) => {
       try {
-        const { orderId, status } = payload;
-
+        const { orderId, status } = payload || {};
         if (!orderId || !status) return;
 
         const eventData = {
@@ -66,8 +78,8 @@ function setupSocketServer(server) {
           updatedAt: new Date().toISOString()
         };
 
+        // Solo enviamos a la sala del pedido
         io.to(`order_${orderId}`).emit('order:status_changed', eventData);
-        io.emit(`order:${orderId}:status`, eventData);
       } catch (error) {
         console.error('driver:update_status error:', error);
       }
@@ -81,11 +93,6 @@ function setupSocketServer(server) {
   return io;
 }
 
-function getSocketServer() {
+export function getSocketServer() {
   return ioInstance;
 }
-
-module.exports = {
-  setupSocketServer,
-  getSocketServer
-};

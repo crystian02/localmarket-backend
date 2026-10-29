@@ -157,8 +157,20 @@ router.patch('/change-requests/:requestId/approve', authMiddleware, requireRole(
 
     const updatePayload = {};
 
+    // CORRECCIÓN DE SEGURIDAD: Lista blanca de campos permitidos
+    // Evita que se modifiquen cosas críticas como owner_id, id, o slug.
+    const allowedFields = [
+      'name', 
+      'category', 
+      'description', 
+      'phone', 
+      'latitude', 
+      'longitude', 
+      'is_active'
+    ];
+
     Object.entries(changes).forEach(([key, value]) => {
-      if (value !== undefined) {
+      if (value !== undefined && allowedFields.includes(key)) {
         updatePayload[key] = value;
       }
     });

@@ -7,10 +7,8 @@ import { supabaseAdmin } from '../config/supabase.js';
 // Crea un pago asociado a una orden
 export const createPaymentRecord = async ({ orderId, userId, amountCents, provider = 'cash' }) => {
   try {
-    // Generamos un identificador de compra para la transacción
     const buyOrder = `LM-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Insertamos el pago en la tabla payments
     const { data, error } = await supabaseAdmin
       .from('payments')
       .insert([
@@ -28,7 +26,6 @@ export const createPaymentRecord = async ({ orderId, userId, amountCents, provid
       .single();
 
     if (error) throw error;
-
     return data;
   } catch (error) {
     console.error('createPaymentRecord error:', error);
@@ -39,7 +36,7 @@ export const createPaymentRecord = async ({ orderId, userId, amountCents, provid
 // Confirma el pago y actualiza el pedido como confirmado
 export const confirmPayment = async ({ paymentId, provider = 'cash' }) => {
   try {
-    // Primero actualizamos el estado del pago a "paid"
+    // CORRECCIÓN: Solo confirmamos si el pago está 'pending'
     const { data, error } = await supabaseAdmin
       .from('payments')
       .update({
@@ -48,12 +45,13 @@ export const confirmPayment = async ({ paymentId, provider = 'cash' }) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', paymentId)
+      .eq('status', 'pending') // Evita re-confirmar
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) throw new Error('El pago no está pendiente o ya fue procesado');
 
-    // Luego actualizamos el pedido relacionado
     const { error: orderError } = await supabaseAdmin
       .from('orders')
       .update({
@@ -63,7 +61,6 @@ export const confirmPayment = async ({ paymentId, provider = 'cash' }) => {
       .eq('id', data.order_id);
 
     if (orderError) throw orderError;
-
     return data;
   } catch (error) {
     console.error('confirmPayment error:', error);
@@ -74,6 +71,7 @@ export const confirmPayment = async ({ paymentId, provider = 'cash' }) => {
 // Reembolsa el pago y marca el pedido como cancelado
 export const refundPayment = async ({ paymentId }) => {
   try {
+    // CORRECCIÓN: Solo reembolsamos si el pago está 'paid'
     const { data, error } = await supabaseAdmin
       .from('payments')
       .update({
@@ -81,10 +79,12 @@ export const refundPayment = async ({ paymentId }) => {
         updated_at: new Date().toISOString()
       })
       .eq('id', paymentId)
+      .eq('status', 'paid')
       .select()
-      .single();
+      .maybeSingle();
 
     if (error) throw error;
+    if (!data) throw new Error('El pago no está pagado o no se puede reembolsar');
 
     const { error: orderError } = await supabaseAdmin
       .from('orders')
@@ -95,6 +95,21 @@ export const refundPayment = async ({ paymentId }) => {
       .eq('id', data.order_id);
 
     if (orderError) throw orderError;
+
+    // CORRECCIÓN: Devolver el stock de los productos
+    const { data: orderItems, error: itemsError } = await supabaseAdmin
+      .from('order_items')
+      .select('product_id, quantity')
+      .eq('order_id', data.order_id);
+
+    if (!itemsError && orderItems) {
+      for (const item of orderItems) {
+        await supabaseAdmin.rpc('increment_stock', {
+          p_product_id: item.product_id,
+          p_quantity: item.quantity
+        });
+      }
+    }
 
     return data;
   } catch (error) {

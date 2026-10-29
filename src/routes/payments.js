@@ -68,6 +68,18 @@ router.post('/payments/create', authMiddleware, async (req, res) => {
       );
     }
 
+    // CORRECCIÓN: Validar que el pedido esté en un estado que permita pago.
+    // Si ya fue entregado o cancelado, no tiene sentido generar un pago.
+    const payableStatuses = ['created', 'confirmed'];
+    if (!payableStatuses.includes(order.status)) {
+      return errorResponse(
+        res,
+        `No se puede crear un pago para un pedido en estado ${order.status}`,
+        'ORDER_NOT_PAYABLE',
+        400
+      );
+    }
+
     const existingPayment = await supabaseAdmin
       .from('payments')
       .select('id')
@@ -86,7 +98,7 @@ router.post('/payments/create', authMiddleware, async (req, res) => {
     const payment = await createPaymentRecord({
       orderId: order.id,
       userId: req.user.id,
-      amountCents: Number(order.total_amount_cents) + Number(order.delivery_fee_cents),
+      amountCents: Number(order.total_amount_cents),
       provider: 'cash'
     });
 
@@ -107,12 +119,31 @@ router.post('/payments/confirm', authMiddleware, async (req, res) => {
       return errorResponse(res, 'payment_id es requerido', 'PAYMENT_INVALID_INPUT', 400);
     }
 
+    const { data: paymentCheck, error: checkError } = await supabaseAdmin
+      .from('payments')
+      .select('user_id')
+      .eq('id', payment_id)
+      .maybeSingle();
+
+    if (checkError) {
+      return errorResponse(res, checkError.message, 'PAYMENT_QUERY_ERROR', 400);
+    }
+    
+    if (!paymentCheck) {
+      return errorResponse(res, 'Pago no encontrado', 'PAYMENT_NOT_FOUND', 404);
+    }
+    
+    if (paymentCheck.user_id !== req.user.id && req.user.role !== 'superadmin') {
+      return errorResponse(res, 'No tienes permiso para confirmar este pago', 'PAYMENT_FORBIDDEN', 403);
+    }
+
     const payment = await confirmPayment({ paymentId: payment_id });
 
     return successResponse(res, { payment }, 200);
   } catch (error) {
     console.error('POST /payments/confirm error:', error);
-    return errorResponse(res, 'Error confirmando pago', 'PAYMENT_CONFIRM_FAILED', 500);
+    // El servicio puede lanzar un error si el pago no estaba 'pending'
+    return errorResponse(res, error.message || 'Error confirmando pago', 'PAYMENT_CONFIRM_FAILED', 400);
   }
 });
 
@@ -126,12 +157,31 @@ router.post('/payments/refund', authMiddleware, async (req, res) => {
       return errorResponse(res, 'payment_id es requerido', 'PAYMENT_INVALID_INPUT', 400);
     }
 
+    const { data: paymentCheck, error: checkError } = await supabaseAdmin
+      .from('payments')
+      .select('user_id')
+      .eq('id', payment_id)
+      .maybeSingle();
+
+    if (checkError) {
+      return errorResponse(res, checkError.message, 'PAYMENT_QUERY_ERROR', 400);
+    }
+    
+    if (!paymentCheck) {
+      return errorResponse(res, 'Pago no encontrado', 'PAYMENT_NOT_FOUND', 404);
+    }
+    
+    if (paymentCheck.user_id !== req.user.id && req.user.role !== 'superadmin') {
+      return errorResponse(res, 'No tienes permiso para reembolsar este pago', 'PAYMENT_FORBIDDEN', 403);
+    }
+
     const payment = await refundPayment({ paymentId: payment_id });
 
     return successResponse(res, { payment }, 200);
   } catch (error) {
     console.error('POST /payments/refund error:', error);
-    return errorResponse(res, 'Error reembolsando pago', 'PAYMENT_REFUND_FAILED', 500);
+    // El servicio puede lanzar un error si el pago no estaba 'paid'
+    return errorResponse(res, error.message || 'Error reembolsando pago', 'PAYMENT_REFUND_FAILED', 400);
   }
 });
 

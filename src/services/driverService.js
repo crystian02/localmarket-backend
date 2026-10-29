@@ -1,29 +1,32 @@
-const { supabaseAdmin } = require('../config/supabase');
+//src/services/driverService.js
+import { supabaseAdmin } from '../config/supabase.js';
 
-async function getDriverProfile(userId) {
+export async function getDriverProfile(userId) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle(); // CORRECCIÓN: Evita error PGRST116 de Supabase
 
   if (error) throw error;
+  if (!data) throw new Error('Perfil de driver no encontrado'); 
   return data;
 }
 
-async function updateDriverAvailability(userId, isAvailable) {
+export async function updateDriverAvailability(userId, isAvailable) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
     .update({ is_available: isAvailable })
     .eq('id', userId)
     .select()
-    .single();
+    .maybeSingle(); // CORRECCIÓN: Consistencia con el método de búsqueda
 
   if (error) throw error;
+  if (!data) throw new Error('Perfil de driver no encontrado');
   return data;
 }
 
-async function getDriverOrders(userId) {
+export async function getDriverOrders(userId) {
   const { data, error } = await supabaseAdmin
     .from('orders')
     .select('*')
@@ -33,25 +36,3 @@ async function getDriverOrders(userId) {
   if (error) throw error;
   return data || [];
 }
-
-async function assignDriverToOrder(orderId, driverId) {
-  const { data, error } = await supabaseAdmin
-    .from('orders')
-    .update({
-      driver_id: driverId,
-      status: 'accepted'
-    })
-    .eq('id', orderId)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data;
-}
-
-module.exports = {
-  getDriverProfile,
-  updateDriverAvailability,
-  getDriverOrders,
-  assignDriverToOrder
-};

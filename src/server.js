@@ -1,3 +1,6 @@
+//server.js
+// LocalMarket backend server setup with Express and Supabase Auth
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -14,6 +17,7 @@ import deliveryRoutes from './routes/delivery.js';
 import notificationsRoutes from './routes/notifications.js';
 import supportRoutes from './routes/support.js';
 import adsRoutes from './routes/ads.js';
+import driversRoutes from './routes/drivers.js';
 
 import errorHandler from './middleware/errorHandler.js';
 import { setupSocketServer, getSocketServer } from './socket/index.js';
@@ -46,6 +50,7 @@ app.use('/api', deliveryRoutes);
 app.use('/api', notificationsRoutes);
 app.use('/api', supportRoutes);
 app.use('/api', adsRoutes);
+app.use('/api', driversRoutes);
 
 app.use(errorHandler);
 

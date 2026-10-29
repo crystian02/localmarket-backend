@@ -2,7 +2,6 @@ import { supabaseAdmin } from '../config/supabase.js';
 
 // Servicio para manejar notificaciones
 
-
 // Crea una fila en la tabla notifications
 export const createNotification = async ({
   title,
@@ -33,7 +32,6 @@ export const createNotification = async ({
       .single();
 
     if (error) throw error;
-
     return data;
   } catch (error) {
     console.error('createNotification error:', error);
@@ -48,11 +46,11 @@ export const getNotificationsForUser = async ({ role }) => {
     const { data, error } = await supabaseAdmin
       .from('notifications')
       .select('*')
-      .or(`target_role.eq.all,target_role.eq.${role}`)
+      // CORRECCIÓN DE SEGURIDAD: Usamos .in() en lugar de .or() con interpolación
+      .in('target_role', ['all', role])
       .order('created_at', { ascending: false });
 
     if (error) throw error;
-
     return data;
   } catch (error) {
     console.error('getNotificationsForUser error:', error);
